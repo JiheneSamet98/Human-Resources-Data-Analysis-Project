@@ -1,6 +1,6 @@
 # Human-Resources-Data-Analysis-Project
 
-##**Overview**
+## Overview
 
 This project showcases my exploration into the impact of Human Resources on organizational success. Driven by my growing interest in HR analytics, I chose this dataset to deepen my understanding of how HR functions contribute to business outcomes.
 
