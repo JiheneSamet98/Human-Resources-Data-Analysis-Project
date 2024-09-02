@@ -1,0 +1,791 @@
+---
+title: "Human Resources Analysis Project"
+author: " Jihene Samet"
+date: "09/02/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Data description
+
+Data title: Human Resources Dataset
+
+https://www.kaggle.com/rhuebner/human-resources-data-set
+
+Codebook
+
+https://rpubs.com/rhuebner/hr_codebook_v14
+
+Context
+
+This data set was updated 10/19/2020. It was created by Dr. Carla Patalano and Dr.Rich Huebner , which is used in one of their graduate MSHRM courses called HR Metrics and Analytics, at New England College of Business. They use the data set to teach HR students how to use and analyze the data in Tableau Desktop.
+
+The data provide information about employees and their characteristics.
+
+What made me choose this data set is my new interest of Human Resources work and its effect on the contribution of the success of a Co. or an organization.
+
+In this project I'm going to practice what I've learned in Data Analytics class. So let's get started.
+
+
+
+# Importing packages
+```{r message=FALSE, warning=FALSE}
+library(magrittr)
+library(dplyr)
+library(tidyr) # to gather columns into key-value pairs
+library(ggplot2) #for data viz
+library(arules) # for association rules
+library(arulesViz) #for viz association rules
+library(grid) # for data viz
+library(gridExtra) #for data viz
+library(moments) # for skewness
+library(nortest) # for pearson test
+```
+
+# Importing data set
+
+Once I've downloaded and installed my data set , I can import it into R to start doing some preliminary analysis and get a sense of what the data looks like.
+```{r}
+HRdata <- read.csv("HRdataset.csv", sep=",", header = TRUE)
+```
+
+## Exploring and describing
+
+The following steps will lead you through the initial exploration of our data set, where we understand more the features and look for missing data.
+```{r}
+str(HRdata) 
+``` 
+Our data contains 311 observations(rows) and 36 variables(columns). We have numeric , binary and categorical variables. Here is a description of some variable:
+
+Feature: DeptID, Description:Department ID code that matches the department the employee works in, DataType: Integer/
+
+Feature: Termd, Description: Has this employee been terminated 1 or 0, DataType: Binary/
+
+Feature: EngagementSurvey, Description: Results from the last engagement survey, DataType: numeric	/
+
+Feature: EmploymentStatus, Description: A description of the person’s employment status. Anyone currently working full time = Active, DataType: character. 
+
+
+#### Looking for NAs
+```{r}
+sum(is.na(HRdata))
+```
+There are 8 missing values. Let's see where they are.
+```{r}
+colSums(is.na(HRdata))
+```
+These missing values needs to be taken to account and needs to be removed using na.omit() function. To prevent us from getting  NA values when running calculations which it can affect our results.
+ 
+```{r}
+HRdata = na.omit(HRdata)
+sum(is.na(HRdata))
+
+```
+The data now contains 308 observations(rows) and 36 variables(columns).
+No more missing data. Our data now is all good to work with.
+
+
+# Data visualization
+
+## Bar charts of employees by gender
+
+```{r cars, fig.height=3, fig.width=5}
+options(repr.plot.width = 8, repr.plot.height = 4)
+employeesnumbers <- HRdata %>%
+group_by(Sex) %>%
+summarise(count = n()) %>%
+ggplot(aes(x=Sex, y=count)) + 
+geom_bar(stat="identity", fill = "orange", color = "grey40") +
+theme_bw() +
+coord_flip() + 
+geom_text(aes(x = Sex, y = 0.01, label = count), hjust = -0.8
+          , vjust = -1, size = 5, color = "black", fontface = "bold", angle = 360) +
+labs(title = "Employees by Gender", x = "Gender"
+     , y = "No. of Employees", subtitle = "How many?") + 
+theme(plot.title=element_text(hjust=0.5), plot.subtitle=element_text(hjust=0.5))
+employeesnumbers
+
+```
+
+As you can see there is 57% of females work in the company and  43%  males.
+
+## Identifying the best recruiting source
+
+We will use three metrics to determine the best recruitment source. We use geom_point() to visualize it so that we can  easily see the average performance and  engagement  for each recruitment source. 
+
+
+```{r}
+library(ggrepel)
+HRdata %>% 
+  group_by(RecruitmentSource) %>%
+  summarise(AvgPerformance = mean(PerfScoreID), AvgEngagementscore = mean(EngagementSurvey)) %>%
+  arrange(AvgPerformance,AvgEngagementscore) %>%
+  ggplot(., aes(x = AvgEngagementscore, y = AvgPerformance))+
+geom_point(color = 'red') +
+theme_minimal(base_size = 10)+ geom_label_repel(aes(label = RecruitmentSource, 
+fill = factor(RecruitmentSource)), color = 'white',
+size = 3.5) +
+theme(legend.position = "bottom")
+```
+
+From this visualization, we can see a clear picture of the best recruiting sources  to ensure a diverse organization are Online web application , Employee referral and Other. They have the highest score of both engagement and performance.
+
+
+## Department analysis
+
+As HR analysis I want  to see the performance of every department and help to improve it. 
+
+First I'll look for which department have the lowest engagement score, which is a score less than 2. Then I'm going to group department and gender( I want to see the performance of each gender in the department)  by percentage of disengagement , salary and absences. 
+```{r echo=TRUE, warning=TRUE}
+# first prepare  Least Engaged column 
+disengaged <- HRdata %>% 
+  mutate(LeastEngaged = ifelse(EngagementSurvey <= 2, 1, 0)) 
+
+Dep_summary <- disengaged %>%
+  group_by(Department,Sex) %>% 
+  summarize(pct_disengaged = mean(LeastEngaged),
+            avg_salary = mean(Salary),
+            avg_absences = mean(Absences))
+
+```
+
+
+```{r fig.height=4, fig.width=9, warning=TRUE}
+Dep_gathered <- Dep_summary %>%
+  gather(key = "measure", value = "value",
+         pct_disengaged, avg_salary, avg_absences)
+ggplot(Dep_gathered, aes(measure, value, fill = Department, color = Sex)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ measure, scales = "free") +
+ scale_color_manual(values=c("white","black"))
+```
+
+The bars framed in white represent Female and the one framed in black represent Male.
+
+The bars are filled with departments. Each color represent a department.
+
+
+This is interesting. It turnout that Executive office have only Female executives.
+
+In the first plot we see that females are often more absent than males especially in Software Eng department and the average absences in Sales department is little higher then the others.
+
+The second plot show us that Executive office department has the highest salary, which is normal and IT/IS is second highest, and Sales and Productions departments have the lowest salary. We notice that in 3 out of 5 departments, males have high salary than females: imbalance of payment between gender(we'll test this later). 
+
+In the third plot we notice that Sales department is the most disengaged. Going back to plot one and two, it has the most absences and the second worst average salary. Therefore Sales department needs to be taking under consideration and find a way to cheer team spirit up. Also we see that Males are the ones who show disengagement. Maybe the Executive office having only females executives may have an effect on this. 
+
+
+# Association Rules Minig
+
+I'm applying association rule to find the relative between the features of my data set.
+For HR analysis one of the main tasks is to find the degree of satisfaction of the employees. This method will help us see what makes  an employee satisfied and other dissatisfied.
+
+## Converting numeric variables into categorical
+
+I'm going to do some changes to my data to prepare it for association rules mining.
+First I'm using discretize() function from  {arules} package to convert a numeric variable into a categorical variable.
+
+### Converting  salary, absences and employees satisafation by discretization
+
+So here I'm going to prepare a new data set  by converting Engagement Survey, Salary, Absences and Employees Satisfaction from numeric to categorical .
+```{r}
+HR.new <- discretizeDF(HRdata, methods = list(
+  EngagementSurvey = list(method = "frequency", breaks = 3,
+     labels = c( "least engaged", "engaged", "most engaged")),
+
+   Salary = list(method = "frequency", breaks = 4,
+     labels = c("below average", "average", "good", "high")),
+   Absences = list(method = "frequency", breaks = 3, 
+     labels = c("perfect", "good","concerned" )),
+   EmpSatisfaction = list(method = "frequency", breaks= 2,
+     labels = c( "dissatisfied" , "satisfied" ))
+  
+  ),
+  default = list(method = "none")
+  )
+```
+
+### Converting Employee position
+
+First let's take a look at employee's position.
+```{r}
+HRdata %>%
+  count(Position)
+```
+
+As you can see there are a lot of categories. So it would be interesting to group them by level of responsibility: personnel, manager, director.
+
+```{r }
+Personnel <- c('Accountant I', 'Administrative Assistant','BI Developer', 'Data Analyst', 'Data Analyst ', 'Data Architect', 'Database Administrator', 'Enterprise Architect', 'IT Support', 'Network Engineer', 'Principal Data Architect', 'Production Technician I', 'Production Technician II', 'Senior BI Developer', 'Software Engineer', 'Sr. Accountant', 'Sr. DBA', 'Sr. Network Engineer')
+managers <- c('Area Sales Manager', 'IT Manager - DB', 'IT Manager - Infra', 'IT Manager - Support', 'Production Manager', 'Sales Manager', 'Shared Services Manager', 'Software Engineering Manager')
+directors.CEOs <- c('BI Director', 'CIO', 'Director of Operations', 'Director of Sales', 'IT Director')
+
+HR.new$Position<- factor(HR.new$Position, levels = c(Personnel, managers, directors.CEOs ), labels = c(rep("Personnel", 18), rep("Manager", 8), rep("Director or CEO ", 5)))
+
+levels(HR.new$Position)
+```
+
+Done.
+
+
+```{r}
+tapply(HRdata$Absences,HR.new$Absences,summary)
+```
+For better explanation, an employee with less than 6 absences he's a perfect employee, an employee with a absences between 7 and 13 he's a good employee and and employee with absences more than 13 he's a concerned employee.
+
+```{r}
+tapply(HRdata$EmpSatisfaction,HR.new$EmpSatisfaction,summary)
+```
+A rate between 1 and 3  considered as dissatisfied and  rate between  4 and 5 considered as satisfied.
+
+
+Salary is a contentious variable, so I've breaking it into a 4 levels categorical variable by order.
+let's take a look at salary to understand how the division is made.
+```{r}
+median(HRdata$Salary)
+tapply(HRdata$Salary,HR.new$Salary,summary)
+```
+So here the minimum salary is 45046 and the highest Salary is 250000.
+What to consider below average salary is a wage between 45046 and 55578, an average salary is wage between 55688 and 62810 , a good salary between  62910 and 72202 and a high salary is between 72460 and 250000.
+
+
+#### Presenting the new data set
+
+I made all the changes that I need. Now my data is ready. let's take a look at it. 
+
+```{r paged.print=TRUE}
+head(HR.new)
+```
+
+## Starting association rules
+
+First, I will get rid of the unnecessary variables.
+We want to find the relative between some variables and satisfaction.
+These variables are salary,Position, Department,  performance score , results from the last engagement survey,Employee Satisfaction and Absences.
+The data set that I will be using for Association rule is as follow:
+```{r}
+datarule <- HR.new[c(10,13,26,30,31,32,36)]
+head(datarule)
+```
+
+
+```{r}
+str(datarule)
+```
+#### Converting my variables to Factor
+I have 2 variables that are characters. I need to convert them  to Factor in order to apply association rules.
+```{r}
+datarule$Department <- as.factor(datarule$Department)
+datarule$PerformanceScore <- as.factor(datarule$PerformanceScore)
+str(datarule)
+```
+My variables are all Factor. So I'm good to go.
+
+### Converting data from dataframe to transactions 
+```{r pressure, echo=FALSE}
+datatrans<- as(datarule, "transactions")
+summary(datatrans)
+```
+ The matrix has a density of 27.98%, which represents the proportion of non-zero cells.
+ Our sparse matrix’ summary gives information about the transaction’s sizes. one transaction have size of 6 items and 302 transactions have a size of 7 items. All employees satisfy 7 features expect 1 that satisfy only 6 features.
+ 
+The summary lists the most frequent items found in the matrix.
+
+PerformanceScore=Fully Meets, 236 times, which means that , we can determine that performanceScore Fully Meets  appeared in 76% of transactions.
+
+Position=Personnel, 247 times, which means that 77.88% of employees are stuff.
+
+EmpSatisfaction=satisfied, 187 times, which means that 61.72% of employees  are satisfied.
+
+EmpSatisfaction=dissatisfied, 116 times, which means that 38.28% of employees are diassatisfied.
+
+Department=Production, 201 times, which means that 66.36% of employees work in production department.
+
+
+We can visualize most frequent items by using itemFrequencyPlot() function, with minimum support of 0.3.
+As showns in the following plot, this results in a histogram showing eight items in the data with at least 30 percent support:
+```{r}
+itemFrequencyPlot(datatrans, support = 0.3, xlab= "Most Frequent Items")
+```
+
+Let's have a look at the first 3 elements of our sparse matrix, using the inspect() function from arules package .
+```{r}
+inspect(datatrans[1:3])
+```
+These transactions match the first 3 rows of our data set.
+
+####  Training a model on the data
+
+Below we demonstrate association rule mining with apriori() function from arules package which we already called. Apriori counts transactions to find frequent itemsets and then derive association rules from them.
+With settings of:  supp=0.05, which is the minimum support of rules;  conf=0.25, which is the minimum confidence of rules; and minlen=2 & maxlen=5, which are the minimum and the  maximum length of rules, here is our rule:
+```{r}
+myrule <- apriori(datatrans, parameter = list(minlen=2, maxlen=5,support=0.05,  confidence=0.25))
+myrule
+```
+myrule object contains a set of 1632 association rules.
+
+####  Evaluating model performance
+```{r}
+summary(myrule)
+```
+In the part of 'summary of quality measures' we can see that the max support is 0.646 which represent the most frequent item. In our case it's Position=Personnel. The max count is 196 which also present the number of employees who are in Personnel position.
+The lift is a measure of how much more likely one item is to be present(exist) relative to its typical present(existing) rate. In this rule the maximum lift is 7.
+
+#### Determine the factors that influence the variable EmpSatisfaction
+
+We are interested in only rules with rhs indicating employee satisfaction , so I set ' rhs=c("EmpSatisfaction=dissatisfied", "EmpSatisfaction=satisfied") ' in appearance to make sure that only “EmpSatisfaction=dissatisfied"
+and “EmpSatisfaction=satisfied” will appear in the right hand side of rules. All other items can appear in the left hand side, as set
+with default="lhs".
+Rules are sorted by lift to make high-lift rules appear first.
+```{r}
+rule <- apriori(datatrans, parameter = list(minlen=2, maxlen=5,support=0.05,  confidence=0.25),appearance= list(rhs=c("EmpSatisfaction=dissatisfied", "EmpSatisfaction=satisfied"), default="lhs"), control = list(verbose=F))
+rule
+inspect(sort(rule, by = "lift")[1:9]) #Sorting the set of association rules
+```
+245 rules satisfy those criteria.
+
+
+From the first rule we can be 62% sure that when an employee is least engaged and have an average salary is dissatisfaction. This rule is involved in 5.94% of the entire transactions, and the lift implies that an employees who have these characteristics are 1.62 times more likely to be dissatisfied than the typical employee.
+
+In the above result, the 7th and 8th rules show that we can be 78,2% sure that an employees who are most engaged, have and average salary and work in production department are of the same satisfaction degree, with lift of 1,268 which indicates employees with same characteristics are 1,268 likely to be satisfied.
+
+#### Taking subsets of association rules
+##### Satisfied employees
+```{r}
+SatisfiedRule=subset(rule, items  %in% "EmpSatisfaction=satisfied")
+inspect(sort(SatisfiedRule, by = "lift")[7:11])
+
+```
+
+The 4th and the 5th rules indicates that a employees with below average salary, with great performance and a good absences(he's been absent less than 6 days), are 76% of time satisfied, with lift of 1.234 which means that these characteristics are dependent. 
+We can conclude that these employees are still young, newly hired and eager to work.
+
+
+##### Dissatisfied employees
+
+```{r}
+DisatRule=subset(rule, items %in% "EmpSatisfaction=dissatisfied")  
+DisatRule
+inspect(sort(DisatRule, by = "lift")[9:13])
+
+```
+
+Rule 2 show s that we can be 43.85 % sure that  employees who are in Personnel position and their performance fully meets are of the same dissatisfaction degree, with lift of 1.14 which indicates employees with same characteristics are 1,14 likely to be dissatisfied.
+
+
+
+#### Rules visualization for:
+##### Dissatiesied rules
+
+ In this section, we introduce arulesViz, a package
+dedicated to plot association rules, generated by the arules package. 
+
+```{r}
+plot(DisatRule, engine = "htmlwidget")
+```
+
+We can notice most of items have support between 0.05 and 0.1. The darker points the higher the lift and the confident.
+
+Rule 18:{Salary=average, EngagementSurvey= least engaged} => dissatisfied, have high lift(1.6) and high confidence(0.62). So it's a reliable rule.
+
+Rule 42: {performaceScore =fully meets, EngagemntSurvey= engaged} => dissatisfied,  have low lift(0.787) and confidence(0.301). It's unreliable rule.
+
+
+```{r}
+plot(DisatRule[50:80] , method = "paracoord")
+```
+
+The width of the arrows represents support and the intensity of the color represent confidence.
+
+If performance fully meets  with department=IT/IS with Position=Personnel exist, it lead us to dissatisfied. From HR analysis point of view this may be explained that an employee who fits these characteristics is unhappy with his current position and been waiting for a promotion for a long time.
+
+let's look at the most intense rule (high confident level);
+
+If absence= perfect(been absent a lot) with engagement=least engaged and with position=personnel leads to dissatisfied.
+
+##### Satisfied rules
+
+```{r}
+
+plot(SatisfiedRule, method = "graph", engine = "htmlwidget")
+```
+
+Rule 100 : {Salary=below average,Department=Production ,PerformanceScore=Fully Meets,Absences=good}=> {EmpSatisfaction=satisfied}
+have lift of 1.3 and confidence level of 80% => Reliable rule.
+
+
+
+# Multivariate Analysis
+
+### Normality test
+To test out the normal distribution, we can use the mean, median, and mode for some of the variable:
+```{r}
+mean(HRdata$Salary)
+median(HRdata$Salary)
+sd(HRdata$Salary)
+var(HRdata$Salary)
+skewness(HRdata$Salary) #positively skewed
+ggplot(data=HRdata, aes(Salary)) + geom_density(fill="purple")
+
+```
+
+From the preceding image, we can conclude that the salary variable is positively skewed because of the presence of some outlier values on the right-hand side of the distribution.
+
+To prove that we can graph QQ plot. In a QQ plot, each observation is plotted as a single dot. If the data are normal, the dots should form a straight line.
+```{r}
+library("ggpubr")
+ggqqplot(HRdata$Salary) 
+
+```
+
+Not all the points fall approximately along this reference line, we can't assume normality.
+
+#### Hypothesis test for a test of normality
+Null hypothesis: The data is normally distributed. If p> 0.05, normality can be assumed
+```{r}
+shapiro.test(HRdata$Salary)
+```
+For the skewed data, p-value < 2.2e-16 suggesting strong evidence of non-normality and a nonparametric test should be used
+
+Now let's try to understand a case where skewed data can be used to answer any hypothesis.
+Suppose the variable SALARY  with a mean of 69292.32  and a standard deviation of 25406.09 What is the probability that a new employee have a salary of 110000?
+```{r}
+ pnorm(110000,mean(HRdata$Salary),sd(HRdata$Salary),lower.tail = F)
+```
+Hence the required probability that a new employee would have a salary of 110000 is 5.45%,
+
+
+
+### Hypothesis testing
+####
+H0: both males and females have the same average salary
+
+H11: average salary of males ! average salary of females
+
+```{r}
+table(HRdata$Sex,HRdata$Salary >65000)
+```
+
+there is  56 out 171 female who have a salary greater the 65000. and 58 out of 132 male who have a salary greater than 65000.
+```{r}
+p1 <- 56/171
+p0<- 0.11
+n <- length(HRdata$Salary)
+z <- (p1-p0)/sqrt(p0*(1-p0)/n)
+z
+```
+
+##### Computing the critical value at 5% alpha level
+```{r}
+alpha = .05
+z1 = qnorm(1-alpha)
+z1 
+ifelse(z > z1,"Reject the Null Hypothesis","Accept the Null Hypothesis")
+```
+
+This proves what we've already noticed earlier on the graph.
+
+#### One-Sample t Test & Confidence Interval for engagement
+In this part I'm going to apply hypothesis testing on the engagement variable.
+In this case, when we want to check if the sample mean represents the population mean.
+```{r}
+class(HRdata$EngagementSurvey)
+boxplot(HRdata$EngagementSurvey)
+```
+
+Examine the plot of the data to help me choose mu.
+
+H0: mu =< 4.2
+
+One sided 95% confidence level interval for mu.
+```{r}
+t.test(HRdata$EngagementSurvey, mu=4.2, conf = 0.95)
+```
+In above, p-value = 0.04062, this value is less than alpha value, and thus we have to reject the null hypothesis. Here the null hypothesis was that the average engagement of the employees is 4.2
+
+95 percent confidence interval: 4.016310 4.195967 
+
+The 95% CI does not includes the 4.2.
+
+#### Two sample t-test
+
+This method in appropriate for examine the difference in mean of 2 populations.
+It can also examine the relationship between a numeric outcome and a categorical variable with 2 levels.
+we will be exploring the relationship between performance score and engagement results.
+
+Now we want to know is there statistical significant difference between two groups in term of the average. So here we going to select only 2 levels of the Performance score variable
+ 
+H0: mean of engagement of an exceed performance = engagement of fully meets performance (there is no difference between engagement of an employee who's performance fully meets and an employee who's performance exceeds)
+
+If p-value is very small we reject the null hypothesis and accept H1(that there is diff).
+
+So let's test this out.
+```{r}
+tdata<- HRdata %>%
+  select(PerformanceScore, EngagementSurvey) %>%
+  filter(PerformanceScore== "Exceeds" |
+           PerformanceScore== "Fully Meets")
+```
+
+```{r}
+t.test(data= tdata, EngagementSurvey~PerformanceScore, mu =0 , alt= "two.sided", conf= 0.95)
+
+```
+Since p-value is less than 0.05(p-value = 0.001932) it means we reject the null hypothesis: the average engagement rate of employees that exceed in they performance is different than of fully meets. From the this result the difference between engagement is about 0.25 points. CI: 0.09167297 and  0.39662270 ; zero did not appear in at least 95% of the experiments, and thus we conclude that our decision to reject the null hypothesis is correct.
+
+```{r}
+var(tdata$EngagementSurvey[tdata$PerformanceScore=="Exceeds"])
+var(tdata$EngagementSurvey[tdata$PerformanceScore=="Fully Meets"])
+```
+As you can see the Var of fully meets group is almost double of exceeds group.
+
+
+
+# Prediction who's going to terminate
+
+I'm going to use $Logistic  Regression$ to see who's going to terminate(leave work). So why logistic regression?
+
+Logistic regression answers the question  "will it happen or not" while Linear Regression answers "how much".
+Logistic Regression is used when the response variable has 2 outcomes ( 'yes' or 'no', '0' or '1').
+
+## Split the data
+
+First we will split our data into a training (75%) and testing (25%) data sets so we can assess how well our model performs on an out-of-sample data set.
+
+```{r}
+smp_siz = floor(0.75*nrow(HRdata)) ## creates a value for dividing the data into train and test. 75% of the number of rows in the data set.
+set.seed(123) #to have same random numbers generated
+dt<- sample(seq_len(nrow(HRdata)), size =smp_siz)
+train <- HRdata[dt, ] #creates the training data set with row numbers stored in sample
+test <- HRdata[-dt, ]
+```
+
+
+```{r}
+prop.table(table(train$Termd))
+prop.table(table(test$Termd))
+```
+We can see that we have almost equal percentage of distribution for Active(0) and Terminated(1) employees for both train and test data sets.
+
+### Train the model using the training data and glm() function.
+
+The glm() function fits generalized linear models, a class of models that includes
+logistic regression. The syntax of the glm() function is similar to that of lm(), except that we must pass the argument 'family = binomial 'in order to tell R to
+run a logistic regression rather than some other type of generalized linear model.
+
+
+Covert  variables to Factor variables
+```{r}
+HRdata$Termd <- as.factor(HRdata$Termd)
+HRdata$PerformanceScore <- as.factor(HRdata$PerformanceScore)
+```
+
+##### Define full and null models and do step procedure
+
+```{r}
+model.null = glm(Termd ~ 1,family = "binomial", train)
+
+model.full = glm(Termd ~  MaritalStatusID  + DeptID  + PerfScoreID   + Salary   + MaritalDesc   +  EngagementSurvey  + EmpSatisfaction +  Absences + SpecialProjectsCount  +  DaysLateLast30  +  PerformanceScore + CitizenDesc +  HispanicLatino  + RaceDesc, family ="binomial", train)
+
+step(model.null,
+     scope = list(upper=model.full),
+     direction="both",
+     data=train)
+```
+#### Training model
+Final Logistic Regression Model is:
+```{r}
+model <- glm(formula = Termd ~ DaysLateLast30 + SpecialProjectsCount + 
+    MaritalDesc + EngagementSurvey, family = "binomial", data = train)
+```
+
+By using function summary() we obtain the results of our model:
+```{r}
+summary(model)
+```
+
+
+The AIC or Akaike Information Criteria in this case is 288.74 . The AIC is the measure of fit which penalizes model for the number of model coefficients.
+
+-The p-value in the last column is more than 0.05 for the variables "EngagementSurvey" and "MaritalDescWidowed", we consider them to be statistically insignificant . As for DaysLateLast30 , MaritalDescSingle and MaritalDescSeparated  has the lowest p-value  impacts the "Termd" value in this regression model.
+
+
+-In the case of DaysLateLast30, we see that the estimate is positive, meaning that if employees who been late to work frequently during the last 30 days  are significantly more likely to leave.
+
+-Our MaritalDescSeparated and MaritalDescSingle coefficients are significant and negative. This means single and separate employees are less likely to leave than married employees .
+
+
+
+### Use the Model to Make Predictions
+Once we’ve fit the logistic regression model, we can then use it to calculate probability of termination(leaving) for each employee in test data set.
+
+Let’s see the distribution.
+
+
+```{r}
+# A color palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+hist(model$fitted.values, main = "Distribution of Predicted Probabilities", 
+     xlab = "Probability of Leaving", col = cbPalette[4], border = F, breaks = 25)
+abline(v = .5, col = "red", lwd = 3)
+```
+
+```{r}
+prop.table(table(model$fitted.values>= .5))
+```
+The histogram for the training data show us that we have 13.65% of our employees with a probability of leaving at 50% or higher.
+
+Now let's see how the model will do with the test data.
+
+#### Predicting with test Data
+##### Measuring Accuracy
+
+To see how accurate our model is, we need use it to predict the outcomes for our test data set.
+
+Using predict() function and  type = “response” to get the predicted probabilities for each person.
+```{r}
+testpredict<- predict(model, test, type = "response")
+
+hist(testpredict, main = "Distribution of Test Set \nPredicted Probabilities", 
+     xlab = "Probability termination", col = cbPalette[4], border = F, breaks = 15)
+abline(v = .5, col = "red", lwd = 3)
+
+```
+
+```{r}
+prop.table(table(testpredict >= .5))
+
+```
+
+It's similar to our training set predictions, we see that 13.15% have a predicted probability greater than 0.5.
+
+
+
+We can also use it to make predictions about whether or not an employee will get terminated based on their engagement, MaritalDesc,...:
+```{r}
+newPredict <- data.frame(DaysLateLast30 = 0 , SpecialProjectsCount = 5  , MaritalDesc="Married"  , EngagementSurvey=4.96)
+testpredict1<- predict(model, newPredict, type = "response")
+testpredict1
+```
+The probability of an employee who's married, never been late in the last 30 days,  done 5 projects  and has an engagement  rate of 4.96 (he's well engaged in the CO.), has a probability of being terminated(leaving) of 0.279.
+
+##### The Confusion Matrix
+
+To check accuracy, we’ll build a “confusion matrix”. 
+```{r}
+#validate the model confusion matrix
+prop.table(table(test$Termd))
+accuracy <- table(testpredict > .5, test$Termd) # confusion matrix
+
+addmargins(table(testpredict > .5, test$Termd))
+
+```
+The values on the right represent the predicted outcome (where False = 0 and True = 1). The values for the columns represent the real, observed outcomes.
+
+###### Accuracy
+Let's measure the prediction percentage using confusion matrix. 
+```{r}
+(accuracy[[1,1]] + accuracy [[2,2]]) / sum(accuracy)
+
+```
+The accuracy here indicates that 61.8% of the observations in our data are active employees(not terminated)
+
+#### Cutoff
+```{r}
+addmargins(accuracy)
+
+```
+With this cutoff, our model catches 5 of the 29 termd (leave) events. This gives us a True Positive Rate of 17% . That is, we are correctly labeling 5 of the 29 “termination” cases. Correspondingly, that same .5 cutoff catches 42 of the 47 stay(not terminated) events, yielding a False Negative Rate of 89% percent.
+
+
+####  ROC AUC Curve 
+
+'Receiver Operating Characteristic' or ROC curve gives an idea on the performance of a model by measuring the trade off between true-positive rate and false-positive rate. Higher the area under the curve(AUC), better is the model.
+
+The model is evaluated using the Confusion matrix, AUC(Area under the curve), and ROC(Receiver operating characteristics) curve.
+
+First I'm going to install some necessary packages for this part.
+```{r}
+#install.packages("ROCR")
+#install.packages("caTools")
+
+# Loading packages
+library(ROCR) # For ROC curve to evaluate model 
+library(caTools) # For Logistic regression ,calculation of AUC
+```
+
+##### Steps for ROCR
+
+```{r}
+pr <- prediction(testpredict, test$Termd)
+prf <- performance(pr,measure = "tpr", x.measure = "fpr")
+```
+
+The cut point is “optimal” in the sense it weighs both sensitivity and specificity equally. To determine this cutoff, I'm going to us  the code below. The code takes in both the performance object and prediction object and gives the optimal cutoff value of  predictions:
+Let's have at a detailed ROC curve:
+```{r}
+# Function to get the best cutoff point
+opt.cut <- function(prf, pr){
+    cut.ind <- mapply(FUN=function(x, y, p){
+        d <- (x - 0)^2 + (y-1)^2
+        ind <- which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, prf@x.values, prf@y.values, pr@cutoffs)
+}
+
+# the plot
+plot(prf, colorize = TRUE, print.cutoffs.at = seq(0,1,.1), 
+         main = "ROC Curve", lwd = 2)
+    abline(coef = c(0,1), col = "black", lwd = 2)
+    
+# get the optimum cutoff
+opt <- opt.cut(prf, pr)
+    points(x = 1-opt[2], y = opt[1], pch = 19, col = "red", cex = 1.5)
+    text(x = 1-opt[2],  y = opt[1] + .05, labels = "Optimum Cutoff")
+    
+# Area Under the Curve
+text(x = .6, y = .3, label = paste("Area Under the Curve:\n", 
+                                       round(as.numeric(performance(pr, "auc")@y.values), 2)))
+    
+    text(x = .6, y = .15, label = paste("Optimum Cutoff:\n",  round(opt[3],3)))
+
+```
+
+True Positive Rate(TPR): True Positive/positive on the y axis and False Positive Rate(FPR): False Positive /Negative on the x axis.
+
+#### Interpreting the ROC Curve
+
+We can see that the AUC is 0.6555, which is  high. This indicates that our model does a good but not excellent job of predicting whether or not an employee is going to terminate(leave). The more AUC is, the better the model performs.
+We can see values for the whole continuum of predicted probabilities. The color-coded line tells you what the cutoff values are at each point along the curve.
+This graph definitely proves our  model is good because it curves substantially above the diagonal line.
+
+The best possible cutoff value is 0.324
+
+To get the best trade off between False Positives and True Positives, we would categorize everyone below 0.324 as a “0” (stayer) and everyone at or above it as 1 (leaver).
+
+
+
+
+
+
+
+
+# Resources
+
+https://www.r-bloggers.com/2014/12/a-small-introduction-to-the-rocr-package/
+
+http://gim.unmc.edu/dxtests/roc3.htm
+
+https://rcompanion.org/rcompanion/e_07.html
+
+Books:
+
+R and Data Mining: Examples and Case Studies 
+
+R Data Mining Blueprints
+
+R Data Mining Blueprints: Learn about data mining with real-world datasets
+
+
